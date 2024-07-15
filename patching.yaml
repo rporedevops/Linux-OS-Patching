@@ -1,0 +1,115 @@
+---
+- name: Performing Linux OS Patching
+
+  hosts: all
+  become: true
+  vars:
+    #email_smtp_server: 'smtp.gmail.com'
+    email_smtp_server_port: '25'
+    email_smtp_from_address: 'porlin002@ Ansible Automation)'
+    email_notificaiton: true
+    email_to_address: rajesh.pore@sse.com, vivek.raghunathan@sse.com
+
+    #email settings
+    email_subject: Patching Report
+    email_host: 10.96.7.26
+    email_to: rajesh.pore@sse.com, vivek.raghunathan@sse.com
+
+    #random settings
+    csv_path: /tmp
+    csv_filename: report.csv
+    headers: Hostname,Distro Ver,Kernel Ver,Last Rebooted
+
+    ## service list - it can be stored in inventory level as well
+    service_list:
+#      - nginx
+#      - mysqld
+#      - httpd
+    running_services: ""
+    any_service_running: false
+  tasks:
+    - name: "Pre-Patching: Sending Email to Server and App Owners"
+      include_role:
+        name: send-email
+      vars:
+        email_subject: 'OS patching is beginning now'
+      when: email_notificaiton
+      tags: pretaskemail
+
+    - name: "Patching Pre-tasks"
+      include_role:
+        name: linux-os-patching
+        tasks_from:  pre-check.yaml
+
+    - name: "Patching Tasks"
+      include_role:
+        name: linux-os-patching
+
+    - name: "Patching Post-tasks"
+      include_role:
+        name: linux-os-patching
+        tasks_from:  post-check.yaml
+
+    - name: "Post-Patching: Sending Email to Server and App Owners"
+      include_role:
+        name: send-email
+      vars:
+        email_subject: 'OS patching has been completed'
+      when: email_notificaiton
+      tags:
+        - posttaskemail
+
+    - name: Gather last reboot
+      ansible.builtin.shell: last reboot | grep -m1 "" | awk '{ print $1, $6, $7, $8 }'
+      register: rebooted
+
+    - name: Gather Kernel Version
+      ansible.builtin.shell: uname -r
+      register: uname_r
+
+    - name: Gather OS Version
+      ansible.builtin.shell: cat /etc/redhat-release
+      register: os_version
+
+    - name: Save CSV headers
+      ansible.builtin.lineinfile:
+        dest: "{{ csv_path }}/{{ csv_filename }}"
+        line: "{{ headers }}"
+        create: true
+        state: present
+      delegate_to: localhost
+      run_once: true
+
+    - name: Build out CSV file
+      ansible.builtin.lineinfile:
+        dest: "{{ csv_path }}/{{ csv_filename }}"
+#        line: "{{ inventory_hostname }},{{ ansible_distribution_version }},{{ ansible_kernel }},{{ rebooted.stdout }}"
+        line: "{{ inventory_hostname }},{{ os_version.stdout }},{{ uname_r.stdout }},{{ rebooted.stdout }}"
+        create: true
+        state: present
+      delegate_to: localhost
+
+    - name: Read in CSV to variable
+      community.general.read_csv:
+        path: "{{ csv_path }}/{{ csv_filename }}"
+      register: csv_file
+      delegate_to: localhost
+      run_once: true
+
+#  - name: debug csv_file
+#    debug:
+#      var: csv_file
+#    run_once: true
+
+    - name: Send Email
+      community.general.mail:
+        host: "{{ email_host }}"
+#      from: "{{ email_from }}"
+        port: 25
+        to: "{{ email_to }}"
+        subject: "[Ansible] {{ email_subject }}"
+        body: "{{ lookup('template', 'report.html.j2') }}"
+        attach: "{{ csv_path }}/{{ csv_filename }}"
+        subtype: html
+      delegate_to: localhost
+      run_once: true
