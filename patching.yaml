@@ -8,7 +8,7 @@
     email_smtp_server_port: '25'
     email_smtp_from_address: 'porlin002@ Ansible Automation)'
     email_notificaiton: true
-    email_to_address: rajesh.pore@sse.com, vivek.raghunathan@sse.com
+    email_to_address: rajesh.pore@sse.com
 
     #email settings
     email_subject: Patching Report
